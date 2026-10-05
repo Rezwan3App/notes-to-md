@@ -1,0 +1,33 @@
+#!/bin/bash
+# Runs notes_ocr.swift. The first run compiles it with swiftc -O into a cache folder, so later runs
+# start right away. Editing the .swift file or updating Swift makes a new build. If compiling fails,
+# it falls back to running the source with `swift`.
+set -u
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+src="$here/notes_ocr.swift"
+
+if ! command -v swiftc >/dev/null 2>&1; then
+    echo "swift is not installed. Run: xcode-select --install" >&2
+    exit 1
+fi
+
+cache="${NOTES_TO_MD_CACHE:-$HOME/Library/Caches/notes-to-md}"
+key="$( { cat "$src"; swiftc --version 2>&1; } | shasum -a 256 | cut -c1-16 )"
+bin="$cache/notes_ocr-$key"
+
+if [ ! -x "$bin" ]; then
+    mkdir -p "$cache" 2>/dev/null
+    # Build under a temporary name, then rename. A rename is atomic, so two runs at the same time
+    # never see a half-written binary.
+    tmp="$cache/.build-$$-$RANDOM"
+    if swiftc -O "$src" -o "$tmp" >/dev/null 2>&1 && mv -f "$tmp" "$bin"; then
+        # Remove builds of older versions of the script.
+        for old in "$cache"/notes_ocr-*; do
+            [ "$old" != "$bin" ] && rm -f "$old"
+        done
+    else
+        rm -f "$tmp"
+        exec swift "$src" "$@"
+    fi
+fi
+exec "$bin" "$@"

@@ -5,7 +5,7 @@
 <h1 align="center">notes-to-md</h1>
 
 <p align="center">
-  Snap a photo of your handwritten notes. Get a clean markdown file back.<br>
+  Turn photos of handwritten notes into a markdown file.<br>
   A <a href="https://claude.com/claude-code">Claude Code</a> skill for macOS.
 </p>
 
@@ -13,9 +13,9 @@
 
 ## What it does
 
-You point Claude Code at a photo, a folder of photos, or a scanned PDF, and you get back one tidy `.md` file with headings, lists, and tables where your notes had them.
+Give Claude Code a photo, a folder of photos, or a scanned PDF. You get back one `.md` file, with headings and lists where your notes had them.
 
-Your Mac does all the image work. Apple's Vision framework (the engine behind Live Text) finds the page in each photo, straightens it, and reads the handwriting on-device. Claude only sees the recognized text, never your photos. That keeps it cheap on tokens and keeps your images on your Mac.
+Your Mac reads the handwriting. Apple's Vision framework (the same engine as Live Text) finds the page, straightens it, and recognizes the text on your Mac. Claude only sees that text, never your photos. This uses few tokens, and your images stay on your Mac. Your original files are never changed.
 
 ```
 ~/Notes/lecture-3/            ~/Notes/lecture-3.md
@@ -26,43 +26,38 @@ Your Mac does all the image work. Apple's Vision framework (the engine behind Li
                                ...
 ```
 
-Your original photos are never changed.
+## Limits
 
-## Good to know before you start
-
-- **Mac only.** The skill runs on macOS 13 (Ventura) or newer. It doesn't run on Windows, Linux, iPhone, or Android. Your iPhone works great as the camera, though (see below).
-- **Messy handwriting won't come out well.** Lines the Mac isn't confident about are marked `[unclear]` and left exactly as recognized. Claude never guesses or fills in missing words.
-- **Neat and average handwriting works well**, and so does printed text.
+- **Mac only.** It needs macOS 13 (Ventura) or newer. It does not run on Windows, Linux, iPhone, or Android. Your iPhone can still be the camera (see below).
+- **Messy handwriting does not come out well.** A line is marked `[unclear]` when the Mac is not sure about it, or when it has a word the macOS dictionary does not know. These lines are kept exactly as the Mac read them. Claude never guesses or fills in words.
+- **Neat and average handwriting works well.** So does printed text.
+- **English only.**
 
 ## Install on a Mac
 
-You need three things: Claude Code, Apple's command line tools, and this skill.
-
 ### 1. Install Claude Code
 
-If you don't have it yet, follow the [Claude Code setup guide](https://docs.claude.com/en/docs/claude-code/setup).
+Follow the [Claude Code setup guide](https://docs.claude.com/en/docs/claude-code/setup).
 
 ### 2. Install Apple's command line tools
 
-These give your Mac the `swift` command that runs the script. Open **Terminal** and run:
+These give your Mac the `swift` command the skill needs. Open **Terminal** and run:
 
 ```bash
 xcode-select --install
 ```
 
-A window pops up. Click **Install** and wait a few minutes. If it says the tools are already installed, you're set.
-
-Check that it worked:
+Click **Install** in the window that opens. If it says the tools are already installed, you are done. To check:
 
 ```bash
 swift --version
 ```
 
-You should see a line starting with `Apple Swift version`.
+The output should include `Apple Swift version`.
 
 ### 3. Add the skill
 
-**Option A: with git (easiest to update later)**
+**Option A: with git**
 
 ```bash
 git clone https://github.com/Rezwan3App/notes-to-md.git ~/.claude/skills/notes-to-md
@@ -74,115 +69,81 @@ To update later:
 git -C ~/.claude/skills/notes-to-md pull
 ```
 
-**Option B: without git**
+**Option B: download a ZIP**
 
 1. On this page, click the green **Code** button, then **Download ZIP**.
-2. Unzip it. You'll get a folder called `notes-to-md-main`.
-3. Rename it to `notes-to-md`.
-4. In Finder, press **Cmd + Shift + G**, type `~/.claude/skills`, and press Return. If the folder doesn't exist, create it first:
-
-   ```bash
-   mkdir -p ~/.claude/skills
-   ```
-
+2. Unzip it and rename the folder from `notes-to-md-main` to `notes-to-md`.
+3. Make sure the skills folder exists. In Terminal run `mkdir -p ~/.claude/skills`
+4. In Finder, press **Cmd + Shift + G**, type `~/.claude/skills`, and press Return.
 5. Drag the `notes-to-md` folder in there.
 
-When you're done, this file should exist:
-
-```
-~/.claude/skills/notes-to-md/SKILL.md
-```
+This file should now exist: `~/.claude/skills/notes-to-md/SKILL.md`
 
 ### 4. Try it
 
-Restart Claude Code, then ask:
+Restart Claude Code and ask:
 
-> convert my handwritten notes in ~/Downloads/lecture-3 to markdown
+> turn my handwritten notes in ~/Downloads/lecture-3 into markdown
 
-The first run takes a few extra seconds while Swift compiles the script.
+The first run takes a few extra seconds to compile the script. After that the compiled program is reused, so later runs start in about a second.
 
-## Using it with your iPhone
+## Using your iPhone
 
-The skill runs on the Mac, but your iPhone is the best way to capture notes. Take photos, then get them onto your Mac in whichever way you like:
+The skill runs on the Mac. Your iPhone is the camera. Get the pictures onto your Mac in any of these ways:
 
 | Method | How |
 | --- | --- |
-| **AirDrop** | Select the photos, tap Share, pick your Mac. They land in `~/Downloads`. |
-| **iCloud Photos** | In Photos on the Mac, select the pictures and drag them into a folder. |
-| **Scan Documents** (recommended) | In the **Notes** or **Files** app, tap the camera or ••• menu, choose **Scan Documents**. The iPhone flattens and crops each page for you. Save as a PDF to iCloud Drive and point the skill at that PDF. |
-| **Shortcuts inbox** | Make a Shortcut that takes photos and uses **Save File** to put them in an iCloud Drive folder such as `Notes Inbox`. On your Mac that folder is at `~/Library/Mobile Documents/com~apple~CloudDocs/Notes Inbox`. |
+| **Scan Documents** (recommended) | In the **Notes** or **Files** app, choose **Scan Documents**. The iPhone crops and flattens each page. Save the PDF to iCloud Drive and give the skill that PDF. |
+| **AirDrop** | Select the photos, tap Share, and pick your Mac. They arrive in `~/Downloads`. |
+| **iCloud Photos** | In Photos on the Mac, drag the pictures into a folder. |
+| **Shortcuts inbox** | Make a Shortcut that takes photos and uses **Save File** to put them in an iCloud Drive folder, for example `Notes Inbox`. On the Mac it is at `~/Library/Mobile Documents/com~apple~CloudDocs/Notes Inbox`. |
 
-Then on the Mac:
+Then ask Claude Code on your Mac:
 
 > convert the notes in my iCloud Drive Notes Inbox folder to markdown
 
-If you start Claude Code sessions from your phone that run on your Mac, the skill works there too, because the work still happens on the Mac.
+## Tips
 
-## Tips for better results
-
-- Shoot straight on with even light. Avoid shadows across the page.
-- Fill most of the frame with the page, and leave a little background around the edges so the page can be detected.
+- Shoot straight on, in even light, with no shadow across the page.
+- Let the page fill most of the photo, with a little background around the edges.
 - Dark pen on plain or lightly ruled paper reads best. Pencil and colored paper are harder.
-- One page per photo.
-- Name your photos in page order (`01.jpg`, `02.jpg`, ...) if order matters. Files are processed in Finder name order.
+- One page per photo. Name photos in page order (`01.jpg`, `02.jpg`) because files are read in Finder name order.
+- Two-column pages are supported. When the rows line up across the page, the left column is read first, then the right.
+- A line that runs out of room and carries on below is joined back into one line.
 
 ## What you get
 
-- **One `.md` file** saved next to your input. A folder called `lecture-3` becomes `lecture-3.md` beside it. A single photo `IMG_1234.heic` becomes `IMG_1234.md`. Existing files are never overwritten; a `-2` is added instead.
-- **A `## Page N` marker** for each page, in filename order.
-- **A short report** at the end: how many pages were processed, how many `[unclear]` lines there are and on which pages, which pages were mostly unreadable, and where the file was saved.
+- One `.md` file next to your input. A folder `lecture-3` becomes `lecture-3.md`. A photo `IMG_1234.heic` becomes `IMG_1234.md`. An existing file is never overwritten. A `-2` is added to the name instead.
+- A `## Page N` heading for each page.
+- A short report: pages processed, how many `[unclear]` lines and on which pages, pages that were mostly unreadable, and where the file was saved.
 
-You can ask for a different location or title in your request:
+You can ask for another place or title:
 
 > convert ~/Desktop/scans.pdf to markdown and save it in my Obsidian vault as "Chem week 4"
 
-## Settings
+If your notes are full of names or jargon, ask Claude to turn off the spell check. Otherwise those words make many lines `[unclear]`.
 
-Mention these in your request if you want to change them:
-
-| Setting | Default | What it does |
-| --- | --- | --- |
-| Confidence threshold | `0.5` | Lines below this score are marked `[unclear]`. Raise it to be stricter. |
-| Image size | `2000` px | Long side of each processed page. Bigger can help with tiny writing. |
-| Languages | `en-US` | For example `en-US,fr-FR`. Vision supports English, French, Italian, German, Spanish, Portuguese, Chinese, Cantonese, Korean, Japanese, Russian, Ukrainian, Thai, Vietnamese, and Arabic. |
-
-## Running the script by itself
-
-You can use the recognition step without Claude:
+## Running the script without Claude
 
 ```bash
-swift ~/.claude/skills/notes-to-md/scripts/notes_ocr.swift <photo, folder, or pdf> <output folder>
+~/.claude/skills/notes-to-md/scripts/notes-ocr <photo, folder, or pdf>
 ```
 
-It writes a processed image, a `.txt` file, and a `.json` file with confidence scores for each page, plus a `manifest.json`.
+It prints a short summary and the text of each page. Blank pages are left out of the text, and lines that ran onto the next line are joined back together. The files it makes (a cleaned-up image, a `.txt`, and a `.json` with confidence scores for each page, plus a `manifest.json`) go into a new temp folder, and the summary shows where. To pick the folder yourself, add it after the input. `--no-text` prints only the summary. The compiled program is cached in `~/Library/Caches/notes-to-md`.
+
+To run the tests (they make their own sample pages):
+
+```bash
+~/.claude/skills/notes-to-md/tests/run_tests.sh
+```
 
 ## Troubleshooting
 
-### "swift: command not found"
-
-Run `xcode-select --install` and try again.
-
-### Claude doesn't use the skill
-
-Check that `~/.claude/skills/notes-to-md/SKILL.md` exists, then restart Claude Code. Using the words "handwritten notes" and "markdown" in your request helps.
-
-### A page came out mostly `[unclear]`
-
-Try a sharper photo with better light, or the iPhone's Scan Documents feature. Some handwriting just won't read well, and the skill tells you so instead of guessing.
-
-### Page edges got cut off
-
-Retake the photo with more background visible around the page.
-
-## How it works
-
-1. **Prepare** (on your Mac): detect the page and correct the angle, shrink it to 2,000 px, and convert it to grayscale.
-2. **Recognize** (on your Mac): Vision text recognition in accurate mode, with a confidence score for every line.
-3. **Format** (Claude): reads only the text files and turns them into markdown, without adding anything that wasn't in your notes.
-4. **Report**: a summary of pages, unclear lines, and where the file went.
-
-Only step 3 uses tokens.
+- **"swift is not installed"** Run `xcode-select --install` and try again.
+- **Claude does not use the skill.** Check that `~/.claude/skills/notes-to-md/SKILL.md` exists, then restart Claude Code. Say "handwritten notes" and "markdown" in your request.
+- **A page is mostly `[unclear]`.** Retake it sharper and in better light, or use Scan Documents. Some handwriting will not read well, and the skill tells you so instead of guessing.
+- **Page edges were cut off.** Retake the photo with more background around the page.
 
 ## License
 
-MIT. Free to use, change, and share. See [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
