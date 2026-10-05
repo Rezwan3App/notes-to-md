@@ -182,3 +182,7 @@ Retake the photo with more background visible around the page.
 4. **Report**: a summary of pages, unclear lines, and where the file went.
 
 Only step 3 uses tokens.
+
+## License
+
+MIT. Free to use, change, and share. See [LICENSE](LICENSE).
