@@ -18,7 +18,7 @@ description: Turn photos or scans of handwritten notes (HEIC, JPG, PNG, TIFF, PD
 "<this skill's folder>/scripts/notes-ocr" "<input file or folder>"
 ```
 
-macOS only. It prints one line per page, then each page's text after `--- page N ---` (blank pages are left out). That output is all you read. Lines that wrapped onto the next line are already joined. If it says swift is missing, tell the user to run `xcode-select --install` and stop. The first run takes a few seconds to compile. Add `--no-spellcheck` only if the user says the notes are full of names or jargon (the spell check tags lines with unknown words as `[unclear]`).
+macOS only. If `uname` is not `Darwin`, stop and tell the user this skill needs macOS. It prints one line per page, then each page's text after `--- page N ---` (blank pages are left out). That output is all you read. Lines that wrapped onto the next line are already joined. If it says swift is missing, tell the user to run `xcode-select --install` and stop. The first run takes a few seconds to compile. Add `--no-spellcheck` only if the user says the notes are full of names or jargon (the spell check tags lines with unknown words as `[unclear]`).
 
 ## Write the markdown
 

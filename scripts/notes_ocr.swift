@@ -100,10 +100,13 @@ func collectInputs(_ url: URL) -> (files: [URL], ignored: [String]) {
     }
     let items = (try? FileManager.default.contentsOfDirectory(at: url, includingPropertiesForKeys: [.isRegularFileKey],
                                                                options: [.skipsHiddenFiles])) ?? []
+    // Subfolders (and anything else that isn't a regular file, like a directory named "scan.jpg")
+    // are never searched, but still get reported as ignored so they don't just vanish.
     let files = items.filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
+    let nonFiles = items.filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) != true }
     let wanted = files.filter { let e = $0.pathExtension.lowercased(); return imageExts.contains(e) || e == "pdf" }
     let byName: (URL, URL) -> Bool = { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
-    let ignored = files.filter { !wanted.contains($0) }.sorted(by: byName).map(\.lastPathComponent)
+    let ignored = (files.filter { !wanted.contains($0) } + nonFiles).sorted(by: byName).map(\.lastPathComponent)
     return (wanted.sorted(by: byName), ignored)
 }
 
@@ -113,22 +116,38 @@ func prepareOutput(_ out: URL, input: URL) {
     let fm = FileManager.default
     let inputDir = (try? input.resourceValues(forKeys: [.isDirectoryKey]).isDirectory) == true ? input : input.deletingLastPathComponent()
     if out.path == inputDir.path { fail("the output folder must not be the input folder: \(out.path)") }
+    let markerName = ".notes-ocr-tmp"
     var isDir: ObjCBool = false
     if fm.fileExists(atPath: out.path, isDirectory: &isDir) {
         guard isDir.boolValue else { fail("output path is a file, not a folder: \(out.path)") }
         let names = (try? fm.contentsOfDirectory(atPath: out.path)) ?? []
-        let ours = try! NSRegularExpression(pattern: "^(page-[0-9]{3,}\\.(jpg|txt|json)|manifest\\.json|\\.DS_Store)$")
-        let isOurs = { (n: String) in ours.firstMatch(in: n, range: NSRange(n.startIndex..., in: n)) != nil }
-        let foreign = names.filter { !isOurs($0) }
-        if !foreign.isEmpty {
-            fail("output folder already has other files (\(foreign.prefix(3).joined(separator: ", "))). Use a new or empty folder: \(out.path)")
+        // Only treat the folder as "ours to clear" if we left our marker here on a prior run.
+        // Matching output files by name alone would risk deleting a user's own file that
+        // happens to share a name like manifest.json or page-001.txt.
+        guard names.contains(markerName) else {
+            let visible = names.filter { $0 != ".DS_Store" }
+            if !visible.isEmpty {
+                fail("output folder already has other files (\(visible.prefix(3).joined(separator: ", "))). Use a new or empty folder: \(out.path)")
+            }
+            if !fm.createFile(atPath: out.appendingPathComponent(markerName).path, contents: nil) {
+                fail("could not prepare output folder \(out.path)")
+            }
+            return
         }
         for n in names where n != ".DS_Store" {
             do { try fm.removeItem(at: out.appendingPathComponent(n)) } catch { fail("could not clear old output file \(n): \(error.localizedDescription)") }
         }
+        if !fm.createFile(atPath: out.appendingPathComponent(markerName).path, contents: nil) {
+            fail("could not prepare output folder \(out.path)")
+        }
     } else {
-        do { try fm.createDirectory(at: out, withIntermediateDirectories: true) } catch {
+        do {
+            try fm.createDirectory(at: out, withIntermediateDirectories: true)
+        } catch {
             fail("could not create output folder \(out.path): \(error.localizedDescription)")
+        }
+        if !fm.createFile(atPath: out.appendingPathComponent(markerName).path, contents: nil) {
+            fail("could not prepare output folder \(out.path)")
         }
     }
 }
@@ -207,26 +226,29 @@ func prepareImage(_ url: URL, longSide: CGFloat) -> PreparedPage? {
 
 /// Renders each PDF page on a white background and hands it to `each`. Scanned pages are already flat, so
 /// no document detection. Returns the number of pages that could be rendered, or nil if the PDF did not open.
-func preparePDF(_ url: URL, longSide: CGFloat, each: (PreparedPage) -> Void) -> Int? {
+/// Returns nil if the PDF could not be opened at all. Otherwise returns the page count and the
+/// 1-based page numbers that failed to render, so a partially-broken PDF doesn't silently lose pages.
+func preparePDF(_ url: URL, longSide: CGFloat, each: (PreparedPage) -> Void) -> (count: Int, failed: [Int])? {
     guard let doc = PDFDocument(url: url), !doc.isLocked else { return nil }
     var count = 0
+    var failed: [Int] = []
     for i in 0..<doc.pageCount {
         autoreleasepool {
-            guard let page = doc.page(at: i) else { return }
+            guard let page = doc.page(at: i) else { failed.append(i + 1); return }
             let bounds = page.bounds(for: .mediaBox)
             let rotated = page.rotation % 180 != 0
             let size = rotated ? CGSize(width: bounds.height, height: bounds.width) : bounds.size
-            guard size.width > 0, size.height > 0 else { return }
+            guard size.width > 0, size.height > 0 else { failed.append(i + 1); return }
             let scale = longSide / max(size.width, size.height)
             let target = CGSize(width: max(1, (size.width * scale).rounded()), height: max(1, (size.height * scale).rounded()))
             let thumb = page.thumbnail(of: target, for: .mediaBox)
             guard let cg = thumb.cgImage(forProposedRect: nil, context: nil, hints: nil),
-                  let gray = finish(CIImage(cgImage: cg), longSide: longSide) else { return }
+                  let gray = finish(CIImage(cgImage: cg), longSide: longSide) else { failed.append(i + 1); return }
             count += 1
             each(PreparedPage(image: gray, source: url.lastPathComponent, pdfPage: i + 1, documentDetected: false))
         }
     }
-    return count
+    return (count, failed)
 }
 
 func writeJPEG(_ image: CGImage, to url: URL) -> Bool {
@@ -309,9 +331,14 @@ func readingOrder(_ lines: [TextLine]) -> [TextLine] {
     let sorted = lines.sorted { ($0[0].leftMidY, -$0[0].minX) > ($1[0].leftMidY, -$1[0].minX) }
     var rows: [[TextLine]] = []
     for c in sorted {
-        if let first = rows.last?.first {
-            let hs = first.map(\.height).sorted()
-            if first[0].leftMidY - c[0].leftMidY < 0.5 * hs[hs.count / 2] {
+        if let row = rows.last, !row.isEmpty {
+            // Compare against the row's median starting height, not just its first member: a row
+            // led by an outlier (e.g. a large title sharing a line with smaller body text) would
+            // otherwise wrongly split later same-row lines into a new row.
+            let ys = row.map { $0[0].leftMidY }.sorted()
+            let medianY = ys[ys.count / 2]
+            let hs = row.flatMap { $0.map(\.height) }.sorted()
+            if medianY - c[0].leftMidY < 0.5 * hs[hs.count / 2] {
                 rows[rows.count - 1].append(c); continue
             }
         }
@@ -542,11 +569,19 @@ var stats: [PageStats] = []
 var skipped: [String] = []
 var pageTexts: [String] = []
 
+// A write failure here is almost always transient (disk full, permission hiccup) and can hit any
+// single page in a long-running batch. Recording the page as skipped and moving on keeps the pages
+// already processed, instead of a late page's write error throwing away the whole run's output.
+func pageName(_ page: PreparedPage) -> String { page.pdfPage.map { "\(page.source) page \($0)" } ?? page.source }
+
 func process(_ page: PreparedPage) {
     let n = stats.count + 1
     let base = String(format: "page-%03d", n)
     let out = opts.output
-    guard writeJPEG(page.image, to: out.appendingPathComponent("\(base).jpg")) else { fail("could not write \(base).jpg in \(out.path)") }
+    guard writeJPEG(page.image, to: out.appendingPathComponent("\(base).jpg")) else {
+        skipped.append(pageName(page))
+        return
+    }
 
     let result = recognize(page.image, opts: opts, spellLanguage: spellLanguage)
     let lines = result?.lines ?? []
@@ -554,13 +589,17 @@ func process(_ page: PreparedPage) {
     do {
         try (text + "\n").write(to: out.appendingPathComponent("\(base).txt"), atomically: true, encoding: .utf8)
         try encoder.encode(lines).write(to: out.appendingPathComponent("\(base).json"))
-    } catch { fail("could not write \(base) files in \(out.path): \(error.localizedDescription)") }
+    } catch {
+        skipped.append(pageName(page))
+        return
+    }
 
     pageTexts.append(text)
     let unclear = lines.filter(\.unclear).count
     let mean = lines.isEmpty ? 0 : lines.map(\.confidence).reduce(0, +) / Float(lines.count)
     // "Mostly unreadable": at least half the words are doubtful. Counted by word, not by line, because one
-    // misread word tags a whole line. A word is doubtful when its line's confidence is low or the spell
+    // misread word tags a whole line. A word is doubtful when its line's confidence is low (the whole line's
+    // word count, since suspect words are always a subset of it) or, for a confident line, when the spell
     // check did not know it. A page with no text at all is reported separately.
     let words = lines.map { $0.text.split(separator: " ").count }.reduce(0, +)
     let doubtful = lines.map { $0.confidence < opts.threshold ? $0.text.split(separator: " ").count : $0.suspectWords.count }.reduce(0, +)
@@ -575,7 +614,15 @@ func process(_ page: PreparedPage) {
 for url in inputs {
     autoreleasepool {
         if url.pathExtension.lowercased() == "pdf" {
-            if (preparePDF(url, longSide: opts.longSide, each: process) ?? 0) == 0 { skipped.append(url.lastPathComponent) }
+            guard let result = preparePDF(url, longSide: opts.longSide, each: process) else {
+                skipped.append(url.lastPathComponent)
+                return
+            }
+            if result.count == 0 {
+                skipped.append(url.lastPathComponent)
+            } else {
+                for page in result.failed { skipped.append("\(url.lastPathComponent) page \(page)") }
+            }
         } else if let page = prepareImage(url, longSide: opts.longSide) {
             process(page)
         } else {

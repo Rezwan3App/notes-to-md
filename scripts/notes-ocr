@@ -19,7 +19,9 @@ if [ ! -x "$bin" ]; then
     mkdir -p "$cache" 2>/dev/null
     # Build under a temporary name, then rename. A rename is atomic, so two runs at the same time
     # never see a half-written binary.
-    tmp="$cache/.build-$$-$RANDOM"
+    # mktemp, not a $$-$RANDOM name: NOTES_TO_MD_CACHE can be overridden, and a guessable path in a
+    # shared/world-writable cache dir could be pre-planted as a symlink before swiftc writes to it.
+    tmp="$(mktemp "$cache/.build-XXXXXX")"
     if swiftc -O "$src" -o "$tmp" >/dev/null 2>&1 && mv -f "$tmp" "$bin"; then
         # Remove builds of older versions of the script.
         for old in "$cache"/notes_ocr-*; do
