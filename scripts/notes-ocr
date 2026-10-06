@@ -22,7 +22,8 @@ if [ ! -x "$bin" ]; then
     # mktemp, not a $$-$RANDOM name: NOTES_TO_MD_CACHE can be overridden, and a guessable path in a
     # shared/world-writable cache dir could be pre-planted as a symlink before swiftc writes to it.
     tmp="$(mktemp "$cache/.build-XXXXXX")"
-    if swiftc -O "$src" -o "$tmp" >/dev/null 2>&1 && mv -f "$tmp" "$bin"; then
+    # mktemp makes the file 0600; set the exec bit in case the linker writes into it rather than replacing it.
+    if swiftc -O "$src" -o "$tmp" >/dev/null 2>&1 && chmod 755 "$tmp" && mv -f "$tmp" "$bin"; then
         # Remove builds of older versions of the script.
         for old in "$cache"/notes_ocr-*; do
             [ "$old" != "$bin" ] && rm -f "$old"

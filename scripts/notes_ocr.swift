@@ -102,8 +102,10 @@ func collectInputs(_ url: URL) -> (files: [URL], ignored: [String]) {
                                                                options: [.skipsHiddenFiles])) ?? []
     // Subfolders (and anything else that isn't a regular file, like a directory named "scan.jpg")
     // are never searched, but still get reported as ignored so they don't just vanish.
-    let files = items.filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
-    let nonFiles = items.filter { (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) != true }
+    // Resolve first: URL resource values don't follow symlinks, so a linked photo would read as "not a file".
+    let isFile = { (u: URL) in (try? u.resolvingSymlinksInPath().resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
+    let files = items.filter(isFile)
+    let nonFiles = items.filter { !isFile($0) }
     let wanted = files.filter { let e = $0.pathExtension.lowercased(); return imageExts.contains(e) || e == "pdf" }
     let byName: (URL, URL) -> Bool = { $0.lastPathComponent.localizedStandardCompare($1.lastPathComponent) == .orderedAscending }
     let ignored = (files.filter { !wanted.contains($0) } + nonFiles).sorted(by: byName).map(\.lastPathComponent)
@@ -121,9 +123,9 @@ func prepareOutput(_ out: URL, input: URL) {
     if fm.fileExists(atPath: out.path, isDirectory: &isDir) {
         guard isDir.boolValue else { fail("output path is a file, not a folder: \(out.path)") }
         let names = (try? fm.contentsOfDirectory(atPath: out.path)) ?? []
-        // Only treat the folder as "ours to clear" if we left our marker here on a prior run.
-        // Matching output files by name alone would risk deleting a user's own file that
-        // happens to share a name like manifest.json or page-001.txt.
+        // The marker proves an earlier run made this folder; the name pattern limits what gets deleted.
+        // Both are needed: a name match alone could hit a user's own manifest.json, and a marker alone
+        // would wipe files the user saved into the folder after that run.
         guard names.contains(markerName) else {
             let visible = names.filter { $0 != ".DS_Store" }
             if !visible.isEmpty {
@@ -134,11 +136,13 @@ func prepareOutput(_ out: URL, input: URL) {
             }
             return
         }
-        for n in names where n != ".DS_Store" {
-            do { try fm.removeItem(at: out.appendingPathComponent(n)) } catch { fail("could not clear old output file \(n): \(error.localizedDescription)") }
+        let ours = try! NSRegularExpression(pattern: "^(page-[0-9]{3,}\\.(jpg|txt|json)|manifest\\.json|\\.DS_Store|\\.notes-ocr-tmp)$")
+        let foreign = names.filter { ours.firstMatch(in: $0, range: NSRange($0.startIndex..., in: $0)) == nil }
+        if !foreign.isEmpty {
+            fail("output folder already has other files (\(foreign.prefix(3).joined(separator: ", "))). Use a new or empty folder: \(out.path)")
         }
-        if !fm.createFile(atPath: out.appendingPathComponent(markerName).path, contents: nil) {
-            fail("could not prepare output folder \(out.path)")
+        for n in names where n != ".DS_Store" && n != markerName {
+            do { try fm.removeItem(at: out.appendingPathComponent(n)) } catch { fail("could not clear old output file \(n): \(error.localizedDescription)") }
         }
     } else {
         do {
@@ -225,9 +229,8 @@ func prepareImage(_ url: URL, longSide: CGFloat) -> PreparedPage? {
 }
 
 /// Renders each PDF page on a white background and hands it to `each`. Scanned pages are already flat, so
-/// no document detection. Returns the number of pages that could be rendered, or nil if the PDF did not open.
-/// Returns nil if the PDF could not be opened at all. Otherwise returns the page count and the
-/// 1-based page numbers that failed to render, so a partially-broken PDF doesn't silently lose pages.
+/// no document detection. Returns nil if the PDF did not open. Otherwise returns how many pages rendered
+/// and the 1-based numbers of pages that did not, so a partly broken PDF doesn't silently lose pages.
 func preparePDF(_ url: URL, longSide: CGFloat, each: (PreparedPage) -> Void) -> (count: Int, failed: [Int])? {
     guard let doc = PDFDocument(url: url), !doc.isLocked else { return nil }
     var count = 0
@@ -331,14 +334,9 @@ func readingOrder(_ lines: [TextLine]) -> [TextLine] {
     let sorted = lines.sorted { ($0[0].leftMidY, -$0[0].minX) > ($1[0].leftMidY, -$1[0].minX) }
     var rows: [[TextLine]] = []
     for c in sorted {
-        if let row = rows.last, !row.isEmpty {
-            // Compare against the row's median starting height, not just its first member: a row
-            // led by an outlier (e.g. a large title sharing a line with smaller body text) would
-            // otherwise wrongly split later same-row lines into a new row.
-            let ys = row.map { $0[0].leftMidY }.sorted()
-            let medianY = ys[ys.count / 2]
-            let hs = row.flatMap { $0.map(\.height) }.sorted()
-            if medianY - c[0].leftMidY < 0.5 * hs[hs.count / 2] {
+        if let first = rows.last?.first {
+            let hs = first.map(\.height).sorted()
+            if first[0].leftMidY - c[0].leftMidY < 0.5 * hs[hs.count / 2] {
                 rows[rows.count - 1].append(c); continue
             }
         }
@@ -590,6 +588,8 @@ func process(_ page: PreparedPage) {
         try (text + "\n").write(to: out.appendingPathComponent("\(base).txt"), atomically: true, encoding: .utf8)
         try encoder.encode(lines).write(to: out.appendingPathComponent("\(base).json"))
     } catch {
+        // Don't leave a page image with no text beside it.
+        try? FileManager.default.removeItem(at: out.appendingPathComponent("\(base).jpg"))
         skipped.append(pageName(page))
         return
     }

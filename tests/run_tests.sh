@@ -95,6 +95,16 @@ run "$OUT" "$IN/mixed/1.jpg" "$OUT"
 check "rerun into old output folder: exit 0" test "$CODE" -eq 0
 check "old pages removed (only page-001 left)" test "$(ls "$OUT" | grep -c '^page-')" -eq 3
 check "manifest has 1 page" test "$(field "$OUT" pages.1.source)" = ""
+echo keep > "$OUT/mine.md"
+run "$OUT" "$IN/mixed/1.jpg" "$OUT"
+check "rerun refused when user saved a file in the old output folder" test "$CODE" -ne 0
+check "user file in old output folder left alone" test "$(cat "$OUT/mine.md")" = "keep"
+rm "$OUT/mine.md"
+
+echo "symlinked image..."
+mkdir -p "$IN/linked" && ln -s "$FX/1.jpg" "$IN/linked/link.jpg"
+run x "$IN/linked" "$T/out-linked"
+check "symlinked image is processed" has "$(text "$T/out-linked" 1)" "about apple"
 
 echo "two columns..."
 OUT="$T/out-columns"
