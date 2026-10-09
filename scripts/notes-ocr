@@ -2,7 +2,7 @@
 # Runs notes_ocr.swift. The first run compiles it with swiftc -O into a cache folder, so later runs
 # start right away. Editing the .swift file or updating Swift makes a new build. If compiling fails,
 # it falls back to running the source with `swift`.
-set -u
+set -uo pipefail
 here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 src="$here/notes_ocr.swift"
 

@@ -1,6 +1,6 @@
 ---
 name: notes-to-md
-description: Turn photos or scans of handwritten notes (HEIC, JPG, PNG, TIFF, PDF) into a markdown file on macOS. Use when the user asks to convert, transcribe, or turn handwritten notes, notebook photos, whiteboard pictures, or scanned note PDFs into markdown or text. Text is read locally by Apple Vision, so Claude never views the images.
+description: Turn photos or scans of handwritten notes (HEIC, JPG, PNG, TIFF, PDF) into a markdown file. Works on macOS (Apple Vision, on-device) and Windows (Tesseract, on-device). Use when the user asks to convert, transcribe, digitize, extract, or turn handwritten notes, notebook photos, whiteboard pictures, lecture notes photos, or scanned note PDFs into markdown or text. Also use when they say "make my notes searchable", "I have a photo of my notes", or "turn my scan into text". Images are processed on-device; Claude never views them.
 ---
 
 # notes-to-md
@@ -14,11 +14,27 @@ description: Turn photos or scans of handwritten notes (HEIC, JPG, PNG, TIFF, PD
 
 ## Run
 
+Detect the OS first, then run the matching script.
+
+**macOS** — check with `uname -s` (returns `Darwin`):
+
 ```bash
 "<this skill's folder>/scripts/notes-ocr" "<input file or folder>"
 ```
 
-macOS only. If `uname` is not `Darwin`, stop and tell the user this skill needs macOS. It prints one line per page, then each page's text after `--- page N ---` (blank pages are left out). That output is all you read. Lines that wrapped onto the next line are already joined. If it says swift is missing, tell the user to run `xcode-select --install` and stop. The first run takes a few seconds to compile. Add `--no-spellcheck` only if the user says the notes are full of names or jargon (the spell check tags lines with unknown words as `[unclear]`).
+If `uname` is not `Darwin`, do not use this path. The first run takes a few seconds to compile; later runs start in about a second. If it says swift is missing, tell the user to run `xcode-select --install` and stop. Add `--no-spellcheck` only if the user says the notes are full of names or jargon.
+
+**Windows** — when `uname -s` is not available or does not return `Darwin`:
+
+```powershell
+python "<this skill's folder>\scripts\notes_ocr_windows.py" "<input file or folder>"
+```
+
+If `python` is not found, try `python3`. If Tesseract is missing, the script prints a clear error with the installer link — stop and show that message to the user. The `--no-spellcheck` flag is accepted but has no effect on Windows (Tesseract does not use a dictionary).
+
+**Neither macOS nor Windows:** stop and tell the user this skill supports macOS and Windows only.
+
+The script prints one summary line per page, then each page's text after `--- page N ---` (blank pages are left out). That output is all you read. Lines that wrapped onto the next line are already joined.
 
 ## Write the markdown
 
